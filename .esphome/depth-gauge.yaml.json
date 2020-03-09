@@ -1,0 +1,23 @@
+{
+  "storage_version": 1,
+  "name": "depth_gauge",
+  "comment": null,
+  "esphome_version": "1.14.3",
+  "src_version": 1,
+  "arduino_version": "espressif32@1.11.0",
+  "address": "depth_gauge.local",
+  "esp_platform": "ESP32",
+  "board": "esp32dev",
+  "build_path": "depth_gauge",
+  "firmware_bin_path": "depth_gauge\\.pioenvs\\depth_gauge\\firmware.bin",
+  "loaded_integrations": [
+    "async_tcp",
+    "captive_portal",
+    "esphome",
+    "logger",
+    "network",
+    "ota",
+    "web_server_base",
+    "wifi"
+  ]
+}

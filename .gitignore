@@ -78,5 +78,9 @@ target/
 env/
 ENV/
 
-#VSCode
+# VSCode
 .history
+
+# Project
+secrets.yaml
+depth_gauge
