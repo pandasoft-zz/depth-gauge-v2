@@ -1,3 +1,8 @@
+substitutions:
+  display_chnage_interval: 5s
+  mqtt_upload_interval: 60s
+  realarm_diff: 0.1f
+
 esphome:
   name: depth_gauge
   platform: ESP32
@@ -5,7 +10,6 @@ esphome:
   on_boot:
     priority: -10
     then:
-      #- switch.turn_off: display_on
       - lambda: |-
           id(my_display).turnOff();
 
@@ -33,12 +37,36 @@ logger:
 ota:
   password: !secret ota_pass
 
+mqtt:
+  broker: !secret mqtt_url
+  username: !secret mqtt_login
+  password: !secret mqtt_pass
+  topic_prefix: /
+
+globals:
+  - id: tank_height
+    type: float
+    restore_value: yes
+    initial_value: '2.0'
+  - id: tank_radius
+    type: float
+    restore_value: yes
+    initial_value: '1.25'
+  - id: min_depth
+    type: float
+    restore_value: yes
+    initial_value: '1.50'
+  - id: last_alarm_depth
+    type: float
+    restore_value: yes
+    initial_value: '0'
+
 sensor:
   - platform: ultrasonic
     trigger_pin: GPIO5
     echo_pin: GPIO4
-    name: "Depth"
-    id: "depth"
+    name: "Distance"
+    id: "distance"
     timeout: 8.0m
     filters:
       - median:
@@ -57,6 +85,38 @@ sensor:
       name: "Internal Humidity"
       id: "inner_humidity"
     update_interval: 60s
+  - platform: template
+    name: "Depth"
+    id: depth
+    lambda: !lambda |-
+      return id(tank_height) - id(distance).state;
+    unit_of_measurement: "m"
+    update_interval: 10s
+    on_value:
+      lambda: !lambda |-
+        if ( x < id(min_depth) ) {
+          if ( abs(x - id(last_alarm_depth)) > ${realarm_diff} ) {
+            id(last_alarm_depth) = x;
+            id(alarmSwitch).turn_on();
+          }
+        } else {
+          id(last_alarm_depth) = 0;
+        }
+      
+  - platform: template
+    name: "Volume"
+    id: volume
+    lambda: !lambda |-
+      return (id(depth).state * (id(tank_radius) * id(tank_radius)) * 3.14);
+    unit_of_measurement: "m3"
+    update_interval: 10s
+  - platform: template
+    name: "liter"
+    id: liter
+    lambda: !lambda |-
+      return (id(volume).state * 10);
+    unit_of_measurement: "hl"
+    update_interval: 10s  
 
 binary_sensor:
   - platform: gpio
@@ -68,28 +128,30 @@ binary_sensor:
       - delayed_off: 10s
     on_press:
       then:
-        - logger.log: "Detekce On"
-        #- switch.turn_on: display_on
         - lambda: |-
             id(my_display).turnOn();
     on_release:
       then:
-        - logger.log: "Detekce off"
-        #- switch.turn_off: display_on
         - lambda: |-
             id(my_display).turnOff();
-#switch:
-#  - platform: template
-#    name: "Display"
-#    id: "display_on"
-#    on_turn_on: 
-#      - logger.log: "Display zapnuto"
-#      - lambda: |-
-#          id(my_display).turnOn();
-#    on_turn_off: 
-#      - logger.log: "Display vypnuto"
-#      - lambda: |-
-#          id(my_display).turnOff();
+
+switch:
+  - platform: template
+    name: "Alarm Switch"
+    id: alarmSwitch
+    turn_on_action:
+      - if:
+          condition:
+            - script.is_running: AlarmSound
+          then:
+            - script.stop: AlarmSound
+            - script.execute: AlarmSound
+          else:
+            - script.execute: AlarmSound   
+      - switch.turn_off: alarmSwitch
+    turn_off_action:
+      - script.stop: AlarmSound
+
 i2c:
   sda: GPIO21
   scl: GPIO22
@@ -118,15 +180,55 @@ display:
           it.print(0, 1, id(header_font), "Vlhkost"); 
           it.line(0, 17, 128, 17);
           it.printf(5, 45, id(base_font), "%.1f %%", id(inner_humidity).state);
+      - id: p_distance
+        lambda: |-
+          it.print(0, 1, id(header_font), "Vzdalenost"); 
+          it.line(0, 17, 128, 17);
+          it.printf(5, 45, id(base_font), "%.1f m", id(distance).state);
       - id: p_depth
         lambda: |-
           it.print(0, 1, id(header_font), "Hloubka"); 
           it.line(0, 17, 128, 17);
           it.printf(5, 45, id(base_font), "%.1f m", id(depth).state);
-  
+      - id: p_volume
+        lambda: |-
+          it.print(0, 1, id(header_font), "Litru (hl)"); 
+          it.line(0, 17, 128, 17);
+          it.printf(5, 45, id(base_font), "%.1f", id(liter).state);
+output:
+      - platform: ledc
+        pin: GPIO26
+        id: buzzer
+        
 interval:
-  - interval: 5s
+  - interval: ${display_chnage_interval}
     then:
       - display.page.show_next: my_display
       - component.update: my_display
+  - interval: ${mqtt_upload_interval}
+    then:
+      - mqtt.publish_json:
+          topic: v1/devices/me/telemetry
+          payload: |-
+            root["inner_temp"] = id(inner_temp).state;
+            root["inner_humidity"] = id(inner_humidity).state;
+            root["distance"] = id(distance).state;
+            root["depth"] = id(depth).state;
+            root["liter"] = id(liter).state;
 
+script:
+  - id: AlarmSound
+    then:
+      lambda: |-
+        for (int i = 1; i < 10; i += 1) {
+          id(buzzer).apply_frequency(500);
+          id(buzzer).set_level(0.9);
+          delay(1500);
+          id(buzzer).turn_off();
+          id(buzzer).apply_frequency(3000);
+          id(buzzer).set_level(0.9);
+          delay(1000);
+          id(buzzer).turn_off();
+          delay(20);
+        }
+   
