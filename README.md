@@ -1,4 +1,4 @@
-# depth-gauge-v2
+# Hloubkomer V2
 
 Jednoduchy "udelatko" na mereni hladiny v nadrzi. Hlavni vlastnosti jsou:
 
@@ -24,7 +24,9 @@ Projekt je zalozen na platformne ESPHome, ktera se na tento typ projektu vice ne
  | PCB | https://www.aliexpress.com/item/32512619349.html | 50 kc |
  | | Celkem | ~ 350 kc |
 
+
 (Odkazy taky nejsou zaruceny, pri sestavovani jsme pouzival i soucastky ze "supliku" )
+
 (Ceny jsou obcas lepsi na eBay, a ceny jsou brany v nehezkem kurzu )
 
 ## Schema zapojeni
